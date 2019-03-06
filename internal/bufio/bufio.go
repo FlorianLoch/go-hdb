@@ -23,9 +23,14 @@ import (
 	"io"
 	"math"
 
+	"log"
+	"os"
+
 	"github.com/SAP/go-hdb/internal/unicode"
 	"golang.org/x/text/transform"
 )
+
+var errLogger = log.New(os.Stderr, "hdb.bufio ", log.Ldate|log.Ltime|log.Lshortfile)
 
 // Reader is a bufio.Reader extended by methods needed for hdb protocol.
 type Reader struct {
@@ -289,22 +294,22 @@ func (w *Writer) WriteZeroes(cnt int) {
 	}
 
 	// zero out scratch area
-	l := cnt
-	if l > len(w.b) {
-		l = len(w.b)
+	zeroesToWrite := cnt
+	if zeroesToWrite > len(w.b) {
+		zeroesToWrite = len(w.b)
 	}
-	for i := 0; i < l; i++ {
+	for i := 0; i < zeroesToWrite; i++ {
 		w.b[i] = 0
 	}
 
-	for i := 0; i < cnt; {
-		j := cnt - i
-		if j > len(w.b) {
-			j = len(w.b)
-		}
-		n, _ := w.wr.Write(w.b[:j])
-		i += n
-	}
+	// According to the documention of bufio.Writer#Write() an error gets returned
+	// as soon as not all bytes given could be written. We return in case of an error,
+	// so no need to count how many bytes were written and retry to write the remaining ones (as done before).
+	bytesWritten, err := w.wr.Write(w.b[:zeroesToWrite])
+
+	errLogger.Printf("Failed writing zeroes (%d bytes successfully written): %s", bytesWritten, err)
+
+	w.err = err
 }
 
 // Write writes the contents of p.
